@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Digital Weighment & Cess Calculation System</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --bg0:#0a0c10;--bg1:#111520;--bg2:#181d2a;--bg3:#1f2535;--bg4:#252c3a;
+    --border:#2a3347;--border2:#3a4560;
+    --amber:#f59e0b;--amber2:#fbbf24;--amber-dim:#78430a;
+    --green:#22c55e;--green-dim:#14532d;
+    --red:#ef4444;--red-dim:#7f1d1d;
+    --blue:#3b82f6;--blue-dim:#1e3a5f;
+    --cyan:#06b6d4;--cyan-dim:#164e63;
+    --white:#f0f4ff;--muted:#8892a4;--muted2:#5a6478;
+    --font-mono:'Share Tech Mono',monospace;
+    --font-main:'Rajdhani',sans-serif;
+    --font-dev:'Noto Sans Devanagari',sans-serif;
+    --radius:8px;--radius-lg:12px;
+  }
+  html,body,#root{height:100%;background:var(--bg0);color:var(--white);font-family:var(--font-main)}
+  ::-webkit-scrollbar{width:4px;height:4px}
+  ::-webkit-scrollbar-track{background:var(--bg1)}
+  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:4px}
+  /* Marathi — clearly visible: larger, brighter, dedicated weight */
+  .mr{font-family:var(--font-dev);font-size:0.82rem;color:#c5ced8;font-weight:500;line-height:1.4;letter-spacing:0.01em}
+  input,select{background:var(--bg3);border:1px solid var(--border2);color:var(--white);padding:8px 12px;border-radius:var(--radius);font-family:var(--font-main);font-size:1rem;width:100%;outline:none;transition:border 0.2s}
+  input:focus,select:focus{border-color:var(--amber)}
+  input::placeholder{color:var(--muted2)}
+  select option{background:var(--bg2);color:var(--white)}
+  optgroup{background:var(--bg1);color:var(--amber);font-style:normal;font-weight:700;font-size:0.78rem;letter-spacing:0.06em}
+  optgroup option{color:var(--white);font-weight:400;background:var(--bg2)}
+  button{font-family:var(--font-main);cursor:pointer;border:none;border-radius:var(--radius);transition:all 0.15s;font-weight:600;letter-spacing:0.04em}
+  .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:0.72rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase}
+  .badge-auto{background:rgba(34,197,94,0.15);color:var(--green);border:1px solid rgba(34,197,94,0.3)}
+  .badge-manual{background:rgba(245,158,11,0.15);color:var(--amber);border:1px solid rgba(245,158,11,0.3)}
+  .badge-stable{background:rgba(34,197,94,0.2);color:var(--green);border:1px solid var(--green)}
+  .badge-unstable{background:rgba(239,68,68,0.15);color:var(--red);border:1px solid rgba(239,68,68,0.3)}
+  .badge-import{background:rgba(59,130,246,0.15);color:var(--blue);border:1px solid rgba(59,130,246,0.3)}
+  .pulse{animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .fade-in{animation:fadeIn 0.3s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef}=React;
+
+/* ── Full bilingual commodity list ── */
+const COMM_GROUPS=[
+  {group:'Cereals & Grains — धान्य',items:[
+    {key:'Gul',        mr:'गूळ',           en:'Jaggery',            bagWt:40},
+    {key:'Sali',       mr:'साळी',          en:'Paddy (Unprocessed)',bagWt:60},
+    {key:'Gahu',       mr:'गहू',           en:'Wheat',              bagWt:50},
+    {key:'Khapli',     mr:'जोड / खपली',    en:'Emmer Wheat',        bagWt:50},
+    {key:'HybridJwari',mr:'हायब्रिड ज्वारी',en:'Hybrid Sorghum',    bagWt:50},
+    {key:'RabiJwari',  mr:'रब्बी ज्वारी',  en:'Rabi Sorghum',       bagWt:50},
+    {key:'PiwaliJwari',mr:'पिवळी ज्वारी',  en:'Yellow Sorghum',     bagWt:50},
+    {key:'Bajari',     mr:'बाजरी',         en:'Pearl Millet',       bagWt:50},
+    {key:'Maka',       mr:'मका',           en:'Maize / Corn',       bagWt:50},
+  ]},
+  {group:'Pulses & Legumes — कडधान्य',items:[
+    {key:'Harbhara',   mr:'हरभरा / चना',   en:'Bengal Gram',        bagWt:50},
+    {key:'Tur',        mr:'तूर',           en:'Pigeon Peas',        bagWt:60},
+    {key:'Mug',        mr:'मुग',           en:'Green Gram',         bagWt:30},
+    {key:'Udid',       mr:'उडीद',          en:'Black Gram',         bagWt:30},
+    {key:'PandhariTur',mr:'पांढरी तूर',    en:'White Pigeon Peas',  bagWt:60},
+    {key:'Rajma',      mr:'राजमा',         en:'Kidney Beans',       bagWt:40},
+    {key:'MexChana',   mr:'मॅक्सीकन चना',  en:'Kabuli Chickpeas',   bagWt:50},
+  ]},
+  {group:'Oilseeds — तेलबिया',items:[
+    {key:'Erandi',     mr:'एरंडी',         en:'Castor Seeds',       bagWt:40},
+    {key:'Javas',      mr:'जवस',           en:'Flaxseeds',          bagWt:25},
+    {key:'Til',        mr:'तीळ',           en:'Sesame Seeds',       bagWt:25},
+    {key:'Kardi',      mr:'करडी',          en:'Safflower Seeds',    bagWt:40},
+    {key:'Karal',      mr:'कारळ / लहान',   en:'Niger Seeds',        bagWt:20},
+    {key:'Mohari',     mr:'मोहरी',         en:'Mustard Seeds',      bagWt:30},
+    {key:'Suryaphul',  mr:'सूर्यफूल',      en:'Sunflower',          bagWt:40},
+    {key:'Soybean',    mr:'सोयाबीन',       en:'Soybean',            bagWt:50},
+    {key:'Groundnut',  mr:'भुईमूग शेंग',   en:'Groundnut (pod)',    bagWt:40},
+  ]},
+  {group:'Spices, Fibers & Others — मसाले व इतर',items:[
+    {key:'Ambadi',     mr:'अंबाडी',        en:'Kenaf / Roselle',    bagWt:40},
+    {key:'Limboli',    mr:'लिंबोळी',       en:'Neem Seeds',         bagWt:30},
+    {key:'Dhane',      mr:'धने',           en:'Coriander Seeds',    bagWt:25},
+    {key:'Chinch',     mr:'चिंच',          en:'Tamarind',           bagWt:50},
+    {key:'Kadba',      mr:'कडबा',          en:'Fodder / Straw',     bagWt:30},
+    {key:'Chinchuka',  mr:'चिंचुका',       en:'Tamarind Seeds',     bagWt:40},
+  ]},
+];
+const COMM_MAP={};
+COMM_GROUPS.forEach(g=>g.items.forEach(c=>{COMM_MAP[c.key]=c}));
+
+const CESS_RATE=0.80; // ₹ per quintal — uniform
+
+const AGENTS=['Ramesh Patil','Suresh Deshmukh','Vijay Kulkarni','Anil Shinde','Mohan Jadhav'];
+const PURCHASERS=['Grain Corp Ltd','Agri Trade Co','National Foods','Maharashtra Traders','Shree Lakshmi Agro'];
+const VEH_TYPES=['Heavy Truck (12-Wheel)','Medium Truck (6-Wheel)','Mini Truck (4-Wheel)','Tractor Trolley'];
+
+const MOCK_TXN=[
+  {id:'TXN-20240513-001',veh:'MH12AB1234',commKey:'Soybean',netWt:8360,agent:'Ramesh Patil',time:'08:14',bags:152,src:'Auto'},
+  {id:'TXN-20240513-002',veh:'MH15CD5678',commKey:'Tur',netWt:6600,agent:'Suresh Deshmukh',time:'08:47',bags:100,src:'Auto'},
+  {id:'TXN-20240513-003',veh:'MH21EF9012',commKey:'Harbhara',netWt:7700,agent:'Vijay Kulkarni',time:'09:22',bags:140,src:'Manual'},
+  {id:'TXN-20240513-004',veh:'MH04GH3456',commKey:'Gahu',netWt:9680,agent:'Anil Shinde',time:'09:55',bags:176,src:'Auto'},
+  {id:'TXN-20240513-005',veh:'MH09IJ7890',commKey:'Maka',netWt:5720,agent:'Mohan Jadhav',time:'10:31',bags:104,src:'Import'},
+  {id:'TXN-20240513-006',veh:'MH33KL1122',commKey:'Soybean',netWt:8140,agent:'Ramesh Patil',time:'11:04',bags:148,src:'Auto'},
+  {id:'TXN-20240513-007',veh:'MH17MN3344',commKey:'Tur',netWt:5148,agent:'Suresh Deshmukh',time:'11:38',bags:78,src:'Auto'},
+  {id:'TXN-20240513-008',veh:'MH22OP5566',commKey:'Harbhara',netWt:9020,agent:'Vijay Kulkarni',time:'12:15',bags:163,src:'Manual'},
+];
+
+function useTime(){
+  const [t,setT]=useState(new Date());
+  useEffect(()=>{const i=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(i)},[]);
+  return t;
+}
+function useLiveWeight(mode,base){
+  const [wt,setWt]=useState(base);
+  const [stable,setStable]=useState(false);
+  useEffect(()=>{
+    if(mode!=='auto'){setWt(base);setStable(true);return;}
+    setStable(false);
+    let n=0,tm;
+    const tick=()=>{
+      setWt(base+Math.round((Math.random()-0.5)*140));
+      if(++n>10){setWt(base);setStable(true);return;}
+      tm=setTimeout(tick,380);
+    };
+    tm=setTimeout(tick,300);
+    return()=>clearTimeout(tm);
+  },[mode,base]);
+  return{wt,stable};
+}
+
+/* ── Header ── */
+function HeaderBar({page,setPage}){
+  const t=useTime();
+  const fmtT=d=>d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const fmtD=d=>d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+  const chips=[
+    {en:'DATE',val:fmtD(t),mr:'तारीख'},
+    {en:'TIME',val:fmtT(t),mr:'वेळ',mono:true},
+    {en:'OPERATOR',val:'Ganesh Desai',mr:'संचालक'},
+    {en:'SHIFT',val:'Morning A',mr:'पाळी'},
+    {en:'LANE',val:'Lane 01',mr:'लेन'},
+  ];
+  return(
+    <div style={{background:'linear-gradient(90deg,#0d1117,#111827)',borderBottom:'1px solid var(--border)',padding:'0 20px',display:'flex',alignItems:'center',gap:20,height:54,flexShrink:0}}>
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <div style={{width:34,height:34,background:'var(--amber)',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'1.15rem',color:'#000'}}>⚖</div>
+        <div>
+          <div style={{fontSize:'0.95rem',fontWeight:700,letterSpacing:'0.08em',color:'var(--amber)'}}>LATUR APMC WEIGHBRIDGE</div>
+          <div style={{fontSize:'0.72rem',color:'#c5ced8',fontFamily:'var(--font-dev)',marginTop:'2px'}}>कृषि उत्पन्न बाजार समिती, लातूर</div>
+          <div style={{fontSize:'0.58rem',color:'var(--muted)',letterSpacing:'0.14em'}}>DIGITAL WEIGHMENT SYSTEM v1.0</div>
+          
+        </div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginRight:'auto',marginLeft:8}}>
+        <div style={{display:'flex',gap:4}}>
+          {['Transaction','Dashboard'].map(p=>(
+            <button key={p} onClick={()=>setPage(p)} style={{background:page===p?'rgba(245,158,11,0.15)':'transparent',color:page===p?'var(--amber)':'var(--muted)',border:`1px solid ${page===p?'rgba(245,158,11,0.4)':'transparent'}`,padding:'5px 18px',borderRadius:6,fontSize:'0.85rem',fontWeight:600}}>
+              {p==='Transaction'?'🔲 ':'📊 '}{p}
+            </button>
+          ))}
+        </div>
+        <div style={{fontSize:'0.62rem',color:'var(--muted2)',letterSpacing:'0.08em',whiteSpace:'nowrap'}}>
+          Created and proprietary of NVD Learning.
+        </div>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:0}}>
+        {chips.map(c=>(
+          <div key={c.en} style={{borderLeft:'1px solid var(--border)',paddingLeft:14,marginLeft:14}}>
+            <div style={{fontSize:'0.56rem',color:'var(--muted2)',letterSpacing:'0.12em'}}>{c.en}</div>
+            <div style={{fontSize:'0.8rem',fontWeight:600,color:'var(--white)',fontFamily:c.mono?'var(--font-mono)':undefined}}>{c.val}</div>
+            <div className="mr" style={{fontSize:'0.72rem'}}>{c.mr}</div>
+          </div>
+        ))}
+        <div style={{borderLeft:'1px solid var(--border)',paddingLeft:14,marginLeft:14,display:'flex',alignItems:'center',gap:6}}>
+          <div style={{width:8,height:8,borderRadius:'50%',background:'var(--green)',boxShadow:'0 0 6px var(--green)'}} className="pulse"/>
+          <span style={{fontSize:'0.72rem',color:'var(--green)',fontWeight:600}}>ONLINE</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Field Label with visible Marathi ── */
+function FL({en,mr,opt,children,style={}}){
+  return(
+    <div style={style}>
+      <div style={{display:'flex',alignItems:'baseline',flexWrap:'wrap',gap:'4px 8px',marginBottom:5}}>
+        <span style={{fontSize:'0.68rem',color:'var(--muted)',letterSpacing:'0.07em',fontWeight:700}}>{en}</span>
+        {mr&&<span className="mr">{mr}</span>}
+        {opt&&<span style={{fontSize:'0.58rem',color:'var(--muted2)',background:'rgba(138,147,164,0.12)',border:'1px solid rgba(138,147,164,0.2)',padding:'1px 6px',borderRadius:10,letterSpacing:'0.06em'}}>Optional</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ── Section Card ── */
+function SCard({title,mr,color='var(--amber)',children,style={}}){
+  return(
+    <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',overflow:'hidden',...style}} className="fade-in">
+      <div style={{background:'var(--bg3)',borderBottom:'1px solid var(--border)',padding:'8px 16px',display:'flex',alignItems:'center',gap:8}}>
+        <div style={{width:3,height:18,background:color,borderRadius:2,flexShrink:0}}/>
+        <div>
+          <span style={{fontSize:'0.78rem',fontWeight:700,letterSpacing:'0.08em',color}}>{title}</span>
+          {mr&&<span className="mr" style={{display:'inline',marginLeft:8,fontSize:'0.82rem'}}>{mr}</span>}
+        </div>
+      </div>
+      <div style={{padding:'14px 16px'}}>{children}</div>
+    </div>
+  );
+}
+
+/* ── Stat row ── */
+function Stat({en,mr,val,color,sub,highlight}){
+  return(
+    <div style={{background:highlight?'rgba(245,158,11,0.06)':'var(--bg3)',borderRadius:'var(--radius)',padding:'8px 12px',border:highlight?'1px solid rgba(245,158,11,0.2)':'1px solid transparent',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <div>
+        <div style={{fontSize:'0.62rem',color:'var(--muted)',letterSpacing:'0.07em'}}>{en}</div>
+        {mr&&<div className="mr">{mr}</div>}
+        {sub&&<div style={{fontSize:'0.6rem',color:'var(--muted2)',marginTop:2}}>{sub}</div>}
+      </div>
+      <div style={{fontSize:'1.05rem',fontFamily:'var(--font-mono)',fontWeight:700,color,textAlign:'right'}}>{val}</div>
+    </div>
+  );
+}
+
+/* ── Action Button ── */
+function ABtn({icon,label,mr,color,bg,onClick,flash,span2}){
+  return(
+    <button onClick={onClick} style={{background:bg,border:`1px solid ${color}38`,color,padding:'11px 8px',borderRadius:'var(--radius)',fontSize:'0.74rem',fontWeight:700,letterSpacing:'0.04em',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,gridColumn:span2?'1/-1':undefined,boxShadow:flash?`0 0 18px ${color}45`:'none'}}
+      onMouseEnter={e=>{e.currentTarget.style.background=color+'25';e.currentTarget.style.transform='scale(1.02)'}}
+      onMouseLeave={e=>{e.currentTarget.style.background=bg;e.currentTarget.style.transform='scale(1)'}}>
+      <span style={{fontSize:'1.1rem'}}>{icon}</span>
+      <span>{label}</span>
+      {mr&&<span className="mr" style={{fontSize:'0.76rem',color:color+'bb'}}>{mr}</span>}
+    </button>
+  );
+}
+
+/* ── Weight display row inside CRT panel ── */
+function WRow({en,mr,val,unit,color,sz,flash}){
+  return(
+    <div style={{marginBottom:14}}>
+      <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:2}}>
+        <span style={{fontSize:'0.56rem',color:'#40606e',letterSpacing:'0.14em'}}>{en}</span>
+        <span style={{fontFamily:'var(--font-dev)',fontSize:'0.74rem',color:'#5a8090',fontWeight:500}}>{mr}</span>
+      </div>
+      <div style={{fontSize:sz,fontFamily:'var(--font-mono)',color,letterSpacing:'0.04em',lineHeight:1.05}} className={flash?'pulse':''}>
+        {typeof val==='number'?val.toLocaleString('en-IN'):val}
+        <span style={{fontSize:'0.44em',color:'#40606e',marginLeft:6}}>{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── TRANSACTION PAGE ── */
+function TransactionPage(){
+  const [mode,setMode]=useState('auto');
+  const [form,setForm]=useState({
+    veh:'MH12AB1234', rfid:'', vehType:VEH_TYPES[0],
+    driver:'Rajesh Kumar', mobile:'9823456701', tare:6580,
+    commKey:'Soybean', bags:152,
+    agent:AGENTS[0], purchaser:PURCHASERS[0], slip:'SLP-2024-1041',
+    manualGross:''
+  });
+  const [showRec,setShowRec]=useState(false);
+  const [saved,setSaved]=useState(false);
+
+  const upV=k=>v=>setForm(f=>({...f,[k]:v}));
+  const upE=k=>e=>upV(k)(e.target.value);
+
+  const ci=COMM_MAP[form.commKey]||COMM_MAP['Soybean'];
+  const bagWt=ci.bagWt;
+
+  // Declared Qty = Declared Bags × Bag Weight
+  const declKg=form.bags*bagWt;
+  const declQ=(declKg/100).toFixed(2);
+
+  // Actual (auto/import) = declared weight × 1.10 + tare (10% more actual is default)
+  const autoGrossBase=Math.round(declKg*1.10)+form.tare;
+  const {wt:liveGross,stable}=useLiveWeight(mode,autoGrossBase);
+  const gross=mode==='manual'?Number(form.manualGross)||0:liveGross;
+  const net=Math.max(0,gross-form.tare);
+  const netQ=(net/100).toFixed(2);
+
+  const todaysRate=5000;
+  const totalWeightKg=declKg;
+  const totalWeightQuintal=declQ;
+  const baseTotalRate=((net/100)*todaysRate).toFixed(2);
+
+  // Cess on actual net weight in quintals
+  const cessAmt=((net/100)*todaysRate*(CESS_RATE/100)).toFixed(2);
+  const declaredCess=((declKg/100)*todaysRate*(CESS_RATE/100)).toFixed(2);
+  const additionalCessRecovered=(Number(cessAmt)-Number(declaredCess)).toFixed(2);
+
+  // Variance: +ve = actual > declared (normal 90% scenario)
+  const varKg=net-declKg;
+  const varPct=declKg>0?((varKg/declKg)*100).toFixed(1):'0.0';
+  const varPos=varKg>=0;
+
+  const txnId='TXN-'+new Date().toISOString().slice(0,10).replace(/-/g,'')+'-'+String(Math.floor(Math.random()*900+100)).padStart(3,'0');
+  const handleSave=()=>{setSaved(true);setTimeout(()=>setSaved(false),2800)};
+
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100%',overflow:'auto',padding:14,gap:12}}>
+
+      {/* Mode bar */}
+      <div style={{display:'flex',alignItems:'center',gap:10,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',padding:'9px 16px',flexWrap:'wrap'}}>
+        <span style={{fontSize:'0.66rem',color:'var(--muted)',letterSpacing:'0.14em',fontWeight:700}}>INPUT MODE:</span>
+        {[{k:'auto',icon:'⚡',en:'Auto Weighbridge',mr:'स्वयंचलित'},
+          {k:'manual',icon:'✎',en:'Manual Entry',mr:'मॅन्युअल'},
+          {k:'import',icon:'↓',en:'Imported Txn',mr:'आयात'}].map(m=>(
+          <button key={m.k} onClick={()=>setMode(m.k)} style={{background:mode===m.k?'rgba(245,158,11,0.18)':'var(--bg3)',color:mode===m.k?'var(--amber)':'var(--muted)',border:`1px solid ${mode===m.k?'rgba(245,158,11,0.5)':'var(--border)'}`,padding:'5px 14px',borderRadius:6,fontSize:'0.8rem',display:'flex',alignItems:'center',gap:5}}>
+            {m.icon}&nbsp;{m.en}
+            <span className="mr" style={{display:'inline',marginLeft:4,fontSize:'0.8rem',color:mode===m.k?'#f5c04b':'#7a8aa0'}}>{m.mr}</span>
+          </button>
+        ))}
+        <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+          {mode==='auto'&&<span className={`badge badge-auto${stable?'':' pulse'}`}>{stable?'✓ STABLE':'◎ LIVE'}</span>}
+          {mode==='manual'&&<span className="badge badge-manual">✎ MANUAL</span>}
+          {mode==='import'&&<span className="badge badge-import">↓ IMPORTED</span>}
+        </div>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1.7fr',gap:12}}>
+
+        {/* ─ LEFT ─ */}
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+
+          {/* Vehicle Identification (includes Tare) */}
+          <SCard title="VEHICLE IDENTIFICATION" mr="वाहन माहिती" color="var(--cyan)">
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <FL en="Vehicle Number" mr="वाहन क्रमांक">
+                <div style={{position:'relative'}}>
+                  <input value={form.veh} onChange={upE('veh')} placeholder="MH12AB1234"
+                    style={{paddingRight:68,fontWeight:600,letterSpacing:'0.05em',fontSize:'0.95rem'}}/>
+                  <span style={{position:'absolute',right:8,top:'50%',transform:'translateY(-50%)',fontSize:'0.57rem',color:'var(--cyan)',background:'rgba(6,182,212,0.14)',padding:'2px 6px',borderRadius:4,letterSpacing:'0.06em'}}>
+                    {mode==='auto'?'ANPR':'MANUAL'}
+                  </span>
+                </div>
+              </FL>
+
+              {/* RFID — explicitly optional */}
+              <FL en="RFID / FASTag ID" mr="आरएफआयडी" opt>
+                <input value={form.rfid} onChange={upE('rfid')} placeholder="RFID-XXXX-XXXX"/>
+              </FL>
+
+              <FL en="Vehicle Type" mr="वाहन प्रकार">
+                <select value={form.vehType} onChange={upE('vehType')}>
+                  {VEH_TYPES.map(v=><option key={v}>{v}</option>)}
+                </select>
+              </FL>
+
+              {/* Driver — free text input */}
+              <FL en="Driver Name" mr="चालकाचे नाव">
+                <input value={form.driver} onChange={upE('driver')} placeholder="Enter driver name"/>
+              </FL>
+
+              {/* Mobile — free text input */}
+              <FL en="Mobile Number" mr="मोबाइल क्रमांक">
+                <input value={form.mobile} onChange={upE('mobile')} placeholder="98XXXXXXXX" maxLength={10}
+                  style={{fontFamily:'var(--font-mono)',letterSpacing:'0.05em'}}/>
+              </FL>
+
+              {/* Tare Weight — moved into Vehicle card */}
+              <div style={{borderTop:'1px solid var(--border)',paddingTop:10,marginTop:2}}>
+                <FL en="Tare Weight (kg)" mr="रिकाम्या वाहनाचे वजन">
+                  <input type="number" value={form.tare} onChange={e=>upV('tare')(Number(e.target.value))} min={0}
+                    style={{fontFamily:'var(--font-mono)',fontSize:'1.05rem',letterSpacing:'0.06em',color:'var(--cyan)',borderColor:'rgba(6,182,212,0.4)'}}/>
+                </FL>
+              </div>
+            </div>
+          </SCard>
+
+          {/* Commodity Declaration */}
+          <SCard title="COMMODITY DECLARATION" mr="माल तपशील" color="var(--blue)">
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <FL en="Commodity" mr="माल प्रकार">
+                <select value={form.commKey} onChange={upE('commKey')} style={{fontSize:'0.86rem',padding:'7px 10px'}}>
+                  {COMM_GROUPS.map(g=>(
+                    <optgroup key={g.group} label={g.group}>
+                      {g.items.map(c=>(
+                        <option key={c.key} value={c.key}>{c.mr} — {c.en}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </FL>
+              {/* Selected commodity details */}
+              <div style={{background:'rgba(59,130,246,0.07)',border:'1px solid rgba(59,130,246,0.2)',borderRadius:'var(--radius)',padding:'6px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span className="mr" style={{fontSize:'0.88rem'}}>{ci.mr}</span>
+                <span style={{fontSize:'0.72rem',color:'var(--blue)'}}>Bag: <b>{bagWt} kg</b></span>
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                <FL en="Declared Bags" mr="घोषित पिशव्या">
+                  <input type="number" value={form.bags} onChange={e=>upV('bags')(Number(e.target.value))} min={0}/>
+                </FL>
+                <FL en="Bag Weight (kg)" mr="पिशवी वजन">
+                  <input value={`${bagWt} kg`} readOnly style={{color:'var(--cyan)',cursor:'not-allowed',fontFamily:'var(--font-mono)'}}/>
+                </FL>
+                <FL en="Total Weight (Kg)" mr="एकूण वजन (किलो)">
+                  <input value={`${totalWeightKg.toLocaleString()} kg`} readOnly style={{color:'var(--green)',cursor:'not-allowed',fontFamily:'var(--font-mono)'}}/>
+                </FL>
+                <FL en="Total Weight (Quintal)" mr="एकूण वजन (क्विंटल)">
+                  <input value={`${totalWeightQuintal} Qtl`} readOnly style={{color:'var(--green)',cursor:'not-allowed',fontFamily:'var(--font-mono)'}}/>
+                </FL>
+              </div>
+              <FL en="Commission Agent" mr="आडत्या">
+                <select value={form.agent} onChange={upE('agent')}>
+                  {AGENTS.map(a=><option key={a}>{a}</option>)}
+                </select>
+              </FL>
+              <FL en="Purchaser Name" mr="खरेदीदार">
+                <select value={form.purchaser} onChange={upE('purchaser')}>
+                  {PURCHASERS.map(p=><option key={p}>{p}</option>)}
+                </select>
+              </FL>
+              <FL en="Slip Number" mr="स्लिप क्रमांक">
+                <input value={form.slip} onChange={upE('slip')}/>
+              </FL>
+            </div>
+          </SCard>
+        </div>
+
+        {/* ─ MIDDLE ─ */}
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+
+          {/* Cess Calculation */}
+          <SCard title="CESS CALCULATION" mr="सेस गणना" color="var(--amber)">
+            <div style={{display:'flex',flexDirection:'column',gap:9}}>
+              {/* Declared Qty box — Bags × Bag Wt */}
+              <div style={{background:'rgba(59,130,246,0.07)',border:'1px solid rgba(59,130,246,0.22)',borderRadius:'var(--radius)',padding:'9px 12px'}}>
+                <div style={{fontSize:'0.6rem',color:'var(--muted)',letterSpacing:'0.08em'}}>DECLARED QUANTITY</div>
+                <div className="mr" style={{marginBottom:3}}>घोषित मात्रा</div>
+                <div style={{fontSize:'0.63rem',color:'var(--muted2)',marginBottom:3}}>{form.bags} पिशव्या × {bagWt} kg = {declKg.toLocaleString()} kg</div>
+                <div style={{fontFamily:'var(--font-mono)',fontSize:'1.5rem',fontWeight:700,color:'var(--blue)'}}>{declQ} <span style={{fontSize:'0.7rem',color:'var(--muted)'}}>Qtl</span></div>
+              </div>
+
+              {/* Actual qty — both kg and quintals shown */}
+              <Stat en="Actual Quantity (kg)" mr="वास्तविक वजन (किलो)" val={`${net.toLocaleString()} kg`} color="var(--green)"/>
+              <Stat en="Actual Quantity (Quintals)" mr="वास्तविक मात्रा (क्विंटल)" val={`${netQ} Qtl`} color="var(--green)"/>
+              <Stat en="Today's Rate" mr="आजचा दर" val={`₹${todaysRate}`} color="var(--blue)"/>
+              <Stat en="Cess Rate" mr="सेस दर" val={`${CESS_RATE.toFixed(2)}%`} color="var(--amber)"/>
+              <Stat en="Base Total Rate" mr="मूळ एकूण दर" val={`₹${baseTotalRate}`} color="var(--cyan)"/>
+
+              {/* Calculated Cess — highlighted */}
+              <div style={{background:'rgba(245,158,11,0.07)',border:'1px solid var(--amber-dim)',borderRadius:'var(--radius)',padding:'12px 14px'}}>
+                <div style={{fontSize:'0.62rem',color:'var(--muted)',letterSpacing:'0.1em'}}>CALCULATED CESS</div>
+                <div className="mr" style={{marginBottom:6}}>सेस रक्कम</div>
+                <div style={{fontSize:'2.5rem',fontWeight:700,fontFamily:'var(--font-mono)',color:'var(--amber)',lineHeight:1}}>₹{cessAmt}</div>
+                <div style={{fontSize:'0.6rem',color:'var(--muted2)',marginTop:4}}>{netQ} Qtl × ₹{todaysRate} × {CESS_RATE.toFixed(2)}%</div>
+              </div>
+
+              {mode==='manual'&&(
+                <FL en="Gross Weight (kg)" mr="एकूण वजन">
+                  <input type="number" value={form.manualGross} onChange={e=>upV('manualGross')(e.target.value)}
+                    placeholder="Enter gross weight" style={{fontFamily:'var(--font-mono)',fontSize:'1.05rem',borderColor:'var(--amber)'}}/>
+                </FL>
+              )}
+            </div>
+          </SCard>
+
+          {/* Actions */}
+          <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',padding:14}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:10}}>
+              <span style={{fontSize:'0.65rem',color:'var(--muted)',letterSpacing:'0.12em',fontWeight:700}}>ACTIONS</span>
+              <span className="mr">क्रिया</span>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:9}}>
+              <ABtn icon="💾" label="SAVE" mr="जतन करा" color="var(--green)" bg="rgba(34,197,94,0.12)" onClick={handleSave} flash={saved}/>
+              <ABtn icon="🖨" label="PRINT RECEIPT" mr="पावती छपाई" color="var(--blue)" bg="rgba(59,130,246,0.12)" onClick={()=>setShowRec(true)}/>
+              <ABtn icon="🚧" label="OPEN BARRIER" mr="अडथळा उघडा" color="var(--amber)" bg="rgba(245,158,11,0.12)" span2/>
+              <ABtn icon="📱" label="SEND SMS" mr="SMS पाठवा" color="var(--cyan)" bg="rgba(6,182,212,0.12)"/>
+              <ABtn icon="✎" label="OVERRIDE" mr="दुरुस्ती" color="var(--muted)" bg="rgba(255,255,255,0.04)"/>
+              <ABtn icon="✕" label="CANCEL" mr="रद्द करा" color="var(--red)" bg="rgba(239,68,68,0.08)"/>
+            </div>
+            {saved&&<div style={{marginTop:10,textAlign:'center',fontSize:'0.8rem',color:'var(--green)',fontWeight:700,letterSpacing:'0.1em'}} className="fade-in">✓ TRANSACTION SAVED SUCCESSFULLY</div>}
+          </div>
+        </div>
+
+        {/* ─ RIGHT — Weighment ─ */}
+        <div style={{display:'flex',flexDirection:'column',gap:12}}>
+          <SCard title="WEIGHMENT" mr="वजन माहिती" color="var(--green)">
+            {/* Industrial CRT display */}
+            <div style={{background:'#050810',border:'2px solid #162616',borderRadius:10,padding:'16px 20px',marginBottom:12,position:'relative',overflow:'hidden'}}>
+              <div style={{position:'absolute',inset:0,backgroundImage:'repeating-linear-gradient(0deg,transparent,transparent 26px,rgba(255,255,255,0.011) 26px,rgba(255,255,255,0.012) 27px)',pointerEvents:'none'}}/>
+              <WRow en="TARE WEIGHT" mr="रिकाम्या वाहनाचे वजन" val={form.tare} unit="kg" color="#5a7080" sz="1.55rem"/>
+              <WRow en="GROSS WEIGHT" mr="एकूण वजन" val={gross} unit="kg" color="var(--cyan)" sz="2rem" flash={mode==='auto'&&!stable}/>
+              <div style={{borderTop:'1px solid #162616',paddingTop:14}}>
+                <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
+                  <span style={{fontSize:'0.58rem',color:'#365046',letterSpacing:'0.16em'}}>NET WEIGHT</span>
+                  <span style={{fontFamily:'var(--font-dev)',fontSize:'0.78rem',color:'#4a7060',fontWeight:500}}>निव्वळ वजन</span>
+                </div>
+                <div style={{fontSize:'4.4rem',fontFamily:'var(--font-mono)',fontWeight:700,lineHeight:1,letterSpacing:'0.03em',color:net>0?'#22c55e':'#1b3520',textShadow:net>0?'0 0 48px rgba(34,197,94,0.32)':'none',transition:'color 0.3s'}} className={mode==='auto'&&!stable?'pulse':''}>
+                  {net.toLocaleString('en-IN')}
+                </div>
+                <div style={{fontSize:'0.9rem',color:'#365046',fontFamily:'var(--font-mono)',marginTop:4,letterSpacing:'0.12em'}}>KILOGRAMS</div>
+              </div>
+            </div>
+
+            {/* Quintals display */}
+            <div style={{background:'rgba(34,197,94,0.07)',border:'1px solid rgba(34,197,94,0.2)',borderRadius:'var(--radius)',padding:'10px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+              <div>
+                <div style={{fontSize:'0.58rem',color:'var(--muted)',letterSpacing:'0.12em'}}>NET WEIGHT IN QUINTALS</div>
+                <div className="mr" style={{marginBottom:4}}>निव्वळ वजन — क्विंटल</div>
+                <div style={{fontSize:'2.5rem',fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--green)',lineHeight:1.05}}>
+                  {netQ}<span style={{fontSize:'1rem',color:'var(--muted)',marginLeft:6}}>Qtl</span>
+                </div>
+              </div>
+              <div style={{display:'flex',flexDirection:'column',gap:7,alignItems:'flex-end'}}>
+                <div>
+                  <div style={{fontSize:'0.56rem',color:'var(--muted)',letterSpacing:'0.1em',marginBottom:3}}>SOURCE</div>
+                  <span className={`badge ${mode==='auto'?'badge-auto':mode==='manual'?'badge-manual':'badge-import'}`}>
+                    {mode==='auto'?'⚡ RS-232':mode==='manual'?'✎ MANUAL':'↓ IMPORT'}
+                  </span>
+                </div>
+                <span className={`badge ${stable||mode!=='auto'?'badge-stable':'badge-unstable'}`}>
+                  {stable||mode!=='auto'?'✓ STABLE':'◎ READING'}
+                </span>
+              </div>
+            </div>
+
+            <div style={{fontSize:'0.63rem',color:'var(--muted2)',textAlign:'center',letterSpacing:'0.07em'}}>
+              WEIGHED: {new Date().toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+            </div>
+          </SCard>
+
+          {/* Variance */}
+          <SCard title="VARIANCE VISIBILITY" mr="फरक तपासणी" color={varPos?'var(--green)':'var(--red)'}>
+            <div style={{display:'flex',flexDirection:'column',gap:9}}>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                {/* Declared box */}
+                <div style={{background:'rgba(59,130,246,0.07)',border:'1px solid rgba(59,130,246,0.2)',borderRadius:'var(--radius)',padding:'8px 10px'}}>
+                  <div style={{fontSize:'0.58rem',color:'var(--muted)',letterSpacing:'0.08em'}}>DECLARED</div>
+                  <div className="mr">घोषित</div>
+                  <div style={{fontFamily:'var(--font-mono)',fontSize:'1.1rem',fontWeight:700,color:'var(--blue)',marginTop:2}}>{declQ} Qtl</div>
+                  <div style={{fontSize:'0.62rem',color:'var(--muted2)'}}>{declKg.toLocaleString()} kg</div>
+                </div>
+                {/* Actual box */}
+                <div style={{background:'rgba(34,197,94,0.07)',border:'1px solid rgba(34,197,94,0.2)',borderRadius:'var(--radius)',padding:'8px 10px'}}>
+                  <div style={{fontSize:'0.58rem',color:'var(--muted)',letterSpacing:'0.08em'}}>ACTUAL</div>
+                  <div className="mr">वास्तविक</div>
+                  <div style={{fontFamily:'var(--font-mono)',fontSize:'1.1rem',fontWeight:700,color:'var(--green)',marginTop:2}}>{netQ} Qtl</div>
+                  <div style={{fontSize:'0.62rem',color:'var(--muted2)'}}>{net.toLocaleString()} kg</div>
+                </div>
+              </div>
+
+              <div style={{background:varPos?'rgba(34,197,94,0.07)':'rgba(239,68,68,0.07)',border:`1px solid ${varPos?'rgba(34,197,94,0.27)':'rgba(239,68,68,0.27)'}`,borderRadius:'var(--radius)',padding:'10px 14px'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-end',marginBottom:8}}>
+                  <div>
+                    <div style={{fontSize:'0.58rem',color:'var(--muted)',letterSpacing:'0.08em'}}>DIFFERENCE (kg)</div>
+                    <div className="mr">फरक (किलो)</div>
+                    <div style={{fontSize:'2.5rem',fontFamily:'var(--font-mono)',fontWeight:700,color:varPos?'var(--green)':'var(--red)',lineHeight:1.05}}>{varKg>=0?'+':''}{varKg} kg</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:'0.58rem',color:'var(--muted)',letterSpacing:'0.08em'}}>VARIANCE %</div>
+                    <div className="mr">फरक %</div>
+                    <div style={{fontSize:'1.55rem',fontFamily:'var(--font-mono)',fontWeight:700,color:varPos?'var(--green)':'var(--red)'}}>{varKg>=0?'+':''}{varPct}%</div>
+                  </div>
+                </div>
+                <div style={{textAlign:'center',fontSize:'0.72rem',fontWeight:700,color:varPos?'var(--green)':'var(--red)',letterSpacing:'0.08em',borderTop:`1px solid ${varPos?'rgba(34,197,94,0.2)':'rgba(239,68,68,0.2)'}`,paddingTop:6}}>
+                  {varPos?'↑ ACTUAL EXCEEDS DECLARED':'↓ ACTUAL BELOW DECLARED'}
+                </div>
+              </div>
+
+              <div style={{background:'rgba(245,158,11,0.07)',border:'1px solid rgba(245,158,11,0.22)',borderRadius:'var(--radius)',padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <div>
+                  <div style={{fontSize:'0.62rem',color:'var(--muted)',letterSpacing:'0.12em'}}>ADDITIONAL CESS RECOVERED</div>
+                  <div className="mr" style={{marginBottom:4}}>अतिरिक्त सेस वसुली</div>
+                </div>
+                <div style={{fontSize:'2.5rem',fontFamily:'var(--font-mono)',fontWeight:700,color:'var(--amber)',lineHeight:1.05}}>
+                  ₹{additionalCessRecovered}
+                </div>
+              </div>
+            </div>
+          </SCard>
+
+
+        </div>
+      </div>
+
+      {showRec&&<Receipt form={form} ci={ci} net={net} netQ={netQ} declKg={declKg} declQ={declQ} cessAmt={cessAmt} txnId={txnId} gross={gross} onClose={()=>setShowRec(false)}/>}
+    </div>
+  );
+}
+
+/* ── Receipt ── */
+function Receipt({form,ci,net,netQ,declKg,declQ,cessAmt,txnId,gross,onClose}){
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.82)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000}} onClick={onClose}>
+      <div style={{background:'#fff',color:'#111',padding:'24px 28px',borderRadius:8,width:420,fontFamily:'monospace',fontSize:'0.8rem',boxShadow:'0 20px 60px rgba(0,0,0,0.6)',maxHeight:'90vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={{textAlign:'center',borderBottom:'2px dashed #aaa',paddingBottom:12,marginBottom:12}}>
+          <div style={{fontSize:'0.68rem',letterSpacing:'0.16em',color:'#555'}}>GOVERNMENT OF MAHARASHTRA</div>
+          <div style={{fontSize:'1rem',fontWeight:700,letterSpacing:'0.08em',marginTop:2}}>APMC MARKET — WEIGHBRIDGE RECEIPT</div>
+          <div style={{fontFamily:'var(--font-dev)',fontSize:'0.9rem',color:'#444',marginTop:4}}>एपीएमसी बाजार — वजन पावती</div>
+        </div>
+        <RL k="Transaction ID" v={txnId}/>
+        <RL k="Date & Time" v={new Date().toLocaleString('en-IN')}/>
+        <Sep/><RL k="Vehicle No." v={form.veh}/><RL k="Driver" v={form.driver}/><RL k="Mobile" v={form.mobile}/><RL k="Type" v={form.vehType}/>
+        {form.rfid&&<RL k="RFID/FASTag" v={form.rfid}/>}
+        <Sep/>
+        <RL k="Commodity (EN)" v={ci.en}/>
+        <RL k="Commodity (MR)" v={ci.mr}/>
+        <RL k="Agent" v={form.agent}/><RL k="Purchaser" v={form.purchaser}/>
+        <RL k="Declared Bags" v={form.bags}/><RL k="Bag Weight" v={`${ci.bagWt} kg`}/>
+        <RL k="Declared Qty" v={`${declKg.toLocaleString()} kg / ${declQ} Qtl`}/><RL k="Slip No." v={form.slip}/>
+        <Sep/>
+        <RL k="Tare Weight" v={`${form.tare.toLocaleString()} kg`}/>
+        <RL k="Gross Weight" v={`${gross.toLocaleString()} kg`}/>
+        <RL k="NET WEIGHT" v={`${net.toLocaleString()} kg`} bold/><RL k="Net Quintals" v={`${netQ} Qtl`} bold/>
+        <Sep thick/><RL k="Cess Rate" v={`₹${CESS_RATE.toFixed(2)}/Qtl`}/>
+        <RL k="CESS AMOUNT" v={`₹ ${cessAmt}`} bold big/>
+        <Sep/><RL k="Operator" v="Ganesh Desai"/>
+        <div style={{textAlign:'center',marginTop:12,fontSize:'0.63rem',color:'#666',letterSpacing:'0.08em',borderTop:'1px dashed #ccc',paddingTop:10}}>
+          — AUTHORISED WEIGHBRIDGE RECEIPT —
+          <div style={{fontFamily:'var(--font-dev)',fontSize:'0.85rem',color:'#555',marginTop:3}}>अधिकृत वजन पावती</div>
+        </div>
+        <div style={{display:'flex',gap:8,marginTop:12}}>
+          <button onClick={()=>window.print()} style={{flex:1,padding:'8px',background:'#111',color:'#fff',borderRadius:6,fontSize:'0.82rem',fontWeight:700,cursor:'pointer',border:'none'}}>🖨 Print</button>
+          <button onClick={onClose} style={{flex:1,padding:'8px',background:'#eee',color:'#333',borderRadius:6,fontSize:'0.82rem',fontWeight:700,cursor:'pointer',border:'none'}}>✕ Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+function Sep({thick}){return<div style={{borderTop:thick?'2px dashed #aaa':'1px dashed #ddd',margin:'9px 0'}}/>;}
+function RL({k,v,bold,big}){
+  return(
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:5,gap:8}}>
+      <span style={{color:'#555',flexShrink:0}}>{k}:</span>
+      <span style={{fontWeight:bold?700:400,fontSize:big?'1.05rem':undefined,color:big?'#1a5c1a':undefined,textAlign:'right'}}>{v}</span>
+    </div>
+  );
+}
+
+/* ── Dashboard ── */
+function DashboardPage(){
+  const cr=useRef(null),pr=useRef(null),lr=useRef(null),charts=useRef({});
+  const hours=Array.from({length:12},(_,i)=>`${7+i}:00`);
+  const byHr=[3,8,14,18,12,9,16,21,15,10,6,3];
+  const commLabels=['Soybean','Tur','Harbhara','Gahu','Maka','Others'];
+  const commVals=[38,22,15,18,12,5];
+  useEffect(()=>{
+    const kill=k=>{if(charts.current[k]){charts.current[k].destroy();delete charts.current[k];}};
+    const go=(ref,key,cfg)=>{if(ref.current){kill(key);charts.current[key]=new Chart(ref.current.getContext('2d'),cfg);}};
+    go(cr,'bar',{type:'bar',data:{labels:hours,datasets:[{data:byHr,backgroundColor:'rgba(245,158,11,0.65)',borderColor:'#f59e0b',borderWidth:1,borderRadius:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8892a4',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8892a4',font:{size:10}}}}}});
+    go(pr,'pie',{type:'doughnut',data:{labels:commLabels,datasets:[{data:commVals,backgroundColor:['#f59e0b','#3b82f6','#22c55e','#06b6d4','#a855f7','#6b7280'],borderWidth:0,hoverOffset:4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#8892a4',font:{size:10},boxWidth:10,padding:8}}}}});
+    go(lr,'line',{type:'line',data:{labels:MOCK_TXN.map(t=>t.id.slice(-3)),datasets:[{data:MOCK_TXN.map(t=>t.netWt),borderColor:'#22c55e',backgroundColor:'rgba(34,197,94,0.07)',fill:true,tension:0.4,pointRadius:3,pointBackgroundColor:'#22c55e'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8892a4',font:{size:10}}},y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#8892a4',font:{size:10}}}}}});
+    return()=>Object.values(charts.current).forEach(c=>c.destroy());
+  },[]);
+  const totNet=MOCK_TXN.reduce((s,t)=>s+t.netWt,0);
+  const totCess=(totNet/100)*CESS_RATE;
+  const manCount=MOCK_TXN.filter(t=>t.src==='Manual').length;
+  const kpis=[
+    {en:'Trucks Today',mr:'आजचे ट्रक',val:MOCK_TXN.length,unit:'',color:'var(--cyan)'},
+    {en:'Total Net Tonnage',mr:'एकूण टनेज',val:(totNet/1000).toFixed(2),unit:'MT',color:'var(--green)'},
+    {en:'Total Cess',mr:'एकूण सेस',val:'₹'+totCess.toFixed(2),unit:'',color:'var(--amber)'},
+    {en:'Avg Weight',mr:'सरासरी वजन',val:(totNet/MOCK_TXN.length/100).toFixed(1),unit:'Qtl',color:'var(--blue)'},
+    {en:'Manual Txns',mr:'मॅन्युअल व्यवहार',val:manCount,unit:'',color:'var(--red)'},
+  ];
+  return(
+    <div style={{padding:16,overflow:'auto',height:'100%'}}>
+      <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:14}}>
+        <span style={{fontSize:'0.7rem',color:'var(--amber)',letterSpacing:'0.14em',fontWeight:700}}>📊 OPERATIONS DASHBOARD</span>
+        <span className="mr">कार्य डॅशबोर्ड</span>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:11,marginBottom:12}}>
+        {kpis.map(k=>(
+          <div key={k.en} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',padding:'12px 14px',borderTop:`3px solid ${k.color}`}}>
+            <div style={{fontSize:'0.58rem',color:'var(--muted)',letterSpacing:'0.08em'}}>{k.en}</div>
+            <div className="mr" style={{marginBottom:4}}>{k.mr}</div>
+            <div style={{fontSize:'1.85rem',fontWeight:700,fontFamily:'var(--font-mono)',color:k.color,lineHeight:1}}>{k.val}</div>
+            {k.unit&&<div style={{fontSize:'0.68rem',color:'var(--muted)',marginTop:2}}>{k.unit}</div>}
+          </div>
+        ))}
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1.5fr',gap:11,marginBottom:12}}>
+        {[{ref:cr,en:'PEAK TRAFFIC — HOURLY',mr:'प्रति तासी ट्रक',color:'var(--amber)'},
+          {ref:pr,en:'COMMODITY MIX',mr:'माल प्रकार',color:'var(--blue)'},
+          {ref:lr,en:'WEIGHT TREND',mr:'वजन ट्रेंड',color:'var(--green)'}].map((c,i)=>(
+          <div key={i} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',padding:14}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:7,marginBottom:10}}>
+              <span style={{fontSize:'0.68rem',color:c.color,letterSpacing:'0.1em',fontWeight:700}}>{c.en}</span>
+              <span className="mr">{c.mr}</span>
+            </div>
+            <div style={{height:148}}><canvas ref={c.ref}/></div>
+          </div>
+        ))}
+      </div>
+      {/* Transactions table */}
+      <div style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:'var(--radius-lg)',overflow:'hidden'}}>
+        <div style={{background:'var(--bg3)',borderBottom:'1px solid var(--border)',padding:'9px 16px',display:'flex',alignItems:'center',gap:8,justifyContent:'space-between'}}>
+          <div style={{display:'flex',alignItems:'baseline',gap:8}}>
+            <span style={{fontSize:'0.7rem',color:'var(--amber)',letterSpacing:'0.12em',fontWeight:700}}>RECENT TRANSACTIONS</span>
+            <span className="mr">अलीकडील व्यवहार</span>
+          </div>
+          <button style={{background:'rgba(245,158,11,0.15)',color:'var(--amber)',border:'1px solid rgba(245,158,11,0.3)',padding:'4px 14px',borderRadius:6,fontSize:'0.7rem',fontWeight:700}}>⬇ EXPORT</button>
+        </div>
+        <div style={{overflowX:'auto'}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:'0.75rem'}}>
+            <thead>
+              <tr style={{background:'var(--bg3)'}}>
+                {['TXN ID','Vehicle','Commodity','Net Wt (kg)','Qtl','Cess ₹','Agent','Time','Src','Status'].map(h=>(
+                  <th key={h} style={{padding:'7px 12px',textAlign:'left',color:'var(--muted)',fontWeight:600,letterSpacing:'0.06em',fontSize:'0.62rem',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {MOCK_TXN.map((t,i)=>{
+                const ci=COMM_MAP[t.commKey]||{en:t.commKey,mr:''};
+                const cess=((t.netWt/100)*CESS_RATE).toFixed(2);
+                return(
+                  <tr key={t.id} style={{borderBottom:'1px solid var(--border)',background:i%2===0?'transparent':'rgba(255,255,255,0.01)',cursor:'pointer'}}
+                    onMouseEnter={e=>e.currentTarget.style.background='rgba(245,158,11,0.04)'}
+                    onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'transparent':'rgba(255,255,255,0.01)'}>
+                    <td style={{padding:'7px 12px',fontFamily:'var(--font-mono)',color:'var(--cyan)',fontSize:'0.68rem'}}>{t.id}</td>
+                    <td style={{padding:'7px 12px',fontWeight:600,color:'var(--white)'}}>{t.veh}</td>
+                    <td style={{padding:'7px 12px'}}>
+                      <div style={{fontSize:'0.72rem',color:'var(--amber)'}}>{ci.en}</div>
+                      <div className="mr" style={{fontSize:'0.78rem'}}>{ci.mr}</div>
+                    </td>
+                    <td style={{padding:'7px 12px',fontFamily:'var(--font-mono)',color:'var(--green)'}}>{t.netWt.toLocaleString()}</td>
+                    <td style={{padding:'7px 12px',fontFamily:'var(--font-mono)',color:'var(--blue)'}}>{(t.netWt/100).toFixed(2)}</td>
+                    <td style={{padding:'7px 12px',fontFamily:'var(--font-mono)',color:'var(--amber)',fontWeight:700}}>₹{cess}</td>
+                    <td style={{padding:'7px 12px',color:'var(--muted)',fontSize:'0.7rem'}}>{t.agent}</td>
+                    <td style={{padding:'7px 12px',fontFamily:'var(--font-mono)',color:'var(--muted)',fontSize:'0.7rem'}}>{t.time}</td>
+                    <td style={{padding:'7px 12px'}}>
+                      <span className={`badge ${t.src==='Auto'?'badge-auto':t.src==='Manual'?'badge-manual':'badge-import'}`} style={{fontSize:'0.58rem'}}>
+                        {t.src==='Auto'?'⚡':t.src==='Manual'?'✎':'↓'} {t.src}
+                      </span>
+                    </td>
+                    <td style={{padding:'7px 12px'}}><span className="badge badge-stable" style={{fontSize:'0.58rem'}}>✓ Done</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── App root ── */
+function App(){
+  const [page,setPage]=useState('Transaction');
+  return(
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',overflow:'hidden'}}>
+      <HeaderBar page={page} setPage={setPage}/>
+      <div style={{flex:1,overflow:'hidden'}}>
+        {page==='Transaction'?<TransactionPage/>:<DashboardPage/>}
+      </div>
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
